@@ -13,9 +13,9 @@ void *workThread(void *data);
 void nslookup(char *subdomain);
 
 char *domain;
-char *lines[32000];
-int linenumber = 0;
-pthread_mutex_t line_mutex;
+char *subs[NUM_OF_SUBS];
+int subnumber = 0;
+pthread_mutex_t sub_mutex;
 
 int main(int argc, char *argv[])
 {
@@ -27,23 +27,23 @@ int main(int argc, char *argv[])
 	printf("\n");
 
 	domain = argv[1];
-	pthread_mutex_init(&line_mutex, NULL);
+	pthread_mutex_init(&sub_mutex, NULL);
 
-	// Open the subs file
+	// open the subs file
 	FILE *fp = fopen("subs.txt", "r");
 
-	// Malloc space for the subs
+	// malloc space for the subs
 	int i;
 	for (i = 0; i < NUM_OF_SUBS; i++)
 	{
-		lines[i] = malloc(100);
+		subs[i] = malloc(100);
 	}
 
-	// Read in the subs
+	// read in the subs
 	i = 0;
-	while (fgets(lines[i++], 99, fp) != NULL);
+	while (fgets(subs[i++], 99, fp) != NULL);
 
-	// Close the file
+	// close the file
 	fclose(fp);
 
 	pthread_t threads[NUM_OF_THREADS]; // make an array of the threads to be run
@@ -52,6 +52,7 @@ int main(int argc, char *argv[])
 	pthread_attr_init(&attr);
 	pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN); // allows for many more threads to be made
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+	
 	
 	int ret;
 	for (i = 0; i < NUM_OF_THREADS; i++) {
@@ -69,6 +70,13 @@ int main(int argc, char *argv[])
 		ret = pthread_join(threads[i], &status);
 	}
 
+	for (i = 0; i < NUM_OF_SUBS; i++)
+	{
+		free(subs[i]);
+	}
+	
+	pthread_mutex_destroy(&sub_mutex);
+
 	return 0;
 }
 
@@ -76,16 +84,16 @@ void *workThread(void *data)
 {
 	while (1)
 	{
-		pthread_mutex_lock(&line_mutex);
+		pthread_mutex_lock(&sub_mutex);
 
-		if (linenumber >= NUM_OF_SUBS - 1)
+		if (subnumber >= NUM_OF_SUBS - 1)
 		{
-			pthread_mutex_unlock(&line_mutex);
+			pthread_mutex_unlock(&sub_mutex);
 			break;
 		}
 
-		char *line = lines[linenumber++];
-		pthread_mutex_unlock(&line_mutex);
+		char *line = subs[subnumber++];
+		pthread_mutex_unlock(&sub_mutex);
 
 		char *p = strstr(line, "\n");
 		*p = '\0';
@@ -97,8 +105,6 @@ void *workThread(void *data)
 		{
 			nslookup(subdomain);
 		}
-
-		free(line);
 	}
 
 	pthread_exit(NULL);
@@ -129,7 +135,7 @@ void nslookup(char *subdomain)
 	{
 		char *p1 = lines[i];
 		p1 = strstr(p1, "\t");
-		if (strstr(p1, "service") == NULL)
+		if (p1 == NULL || strstr(p1, "service") == NULL)
 		{
 			break;
 		}
