@@ -1,0 +1,5 @@
+wpi.edu
+rpi.edu
+pennu.edu
+harvard.edu
+yale.edu

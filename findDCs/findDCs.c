@@ -3,117 +3,163 @@
 #include <unistd.h>
 #include <string.h>
 #include <netdb.h>
-#include <limits.h>
-#include <pthread.h>
+#include <sys/stat.h>
 
-#define NUM_OF_THREADS 200
-#define NUM_OF_SUBS 31291
-
-void *workThread(void *data);
 void nslookup(char *subdomain);
-
-char *domain;
-char *subs[NUM_OF_SUBS];
-int subnumber = 0;
-pthread_mutex_t sub_mutex;
 
 int main(int argc, char *argv[])
 {
-	if (argc < 2)
+	// make sure there are inputted values for the needed variables
+	if (argc != 4)
 	{
-		printf("Usage: ./findDCs [domain]");
+		printf("usage: ./findDCs numOfSubs numOfDomains numOfProcesses\n");
 		return 0;
 	}
-	printf("\n");
 
-	domain = argv[1];
-	pthread_mutex_init(&sub_mutex, NULL);
+	// validate the inputted values
+	int numOfSubs = atoi(argv[1]);
+	int numOfDomains = atoi(argv[2]);
+	int numOfProcesses = atoi(argv[3]);
+	if (numOfSubs < 1 || numOfDomains < 1 || numOfProcesses > numOfDomains)
+	{
+		printf("numOfSubs, numOfDomains, and numOfProcesses must be greater than 0; numOfProcesses cannot be greater than numOfDomains\n");
+		return 0;
+	}
+
+	char *subs[numOfSubs];
+
+	printf("\n");
 
 	// open the subs file
 	FILE *fp = fopen("subs.txt", "r");
 
 	// malloc space for the subs
-	int i;
-	for (i = 0; i < NUM_OF_SUBS; i++)
+	int i, j, k;
+	for (i = 0; i < numOfSubs; i++)
 	{
 		subs[i] = malloc(100);
 	}
 
 	// read in the subs
 	i = 0;
-	while (fgets(subs[i++], 99, fp) != NULL);
+	while (fgets(subs[i++], 99, fp) != NULL && i < numOfSubs);
 
 	// close the file
 	fclose(fp);
 
-	pthread_t threads[NUM_OF_THREADS]; // make an array of the threads to be run
-	
-	pthread_attr_t attr; // make an attr for the threads
-	pthread_attr_init(&attr);
-	pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN); // allows for many more threads to be made
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-	
-	
-	int ret;
-	for (i = 0; i < NUM_OF_THREADS; i++) {
-		ret = pthread_create(&threads[i], &attr, workThread, NULL);
-		if (ret) { // end the progam if there was an error creating a thread
-			printf("Error creating thread #%d, return cod is %d. Exiting program.\n", i + 1, ret);
-			return 0;
-		}
-	}
-	
-	// destroy the attr and wait for all of the threads to finish
-	void *status;
-	pthread_attr_destroy(&attr);
-	for (i = 0; i < NUM_OF_THREADS; i++) {
-		ret = pthread_join(threads[i], &status);
+	// remove all new lines
+	for (i = 0; i < numOfSubs; i++)
+	{
+		char *p = strstr(subs[i], "\n");
+		*p = '\0';
 	}
 
-	for (i = 0; i < NUM_OF_SUBS; i++)
+	// divide the domains
+	if (mkdir("domains", 0700) == 0)
+	{
+		char command[100];
+		sprintf(command, "./divideDomains %d %d", numOfDomains, numOfProcesses);
+		system(command);
+	}
+
+	// create the processes and start making DNS queries
+	pid_t pids[numOfProcesses];
+	for (i = 0; i < numOfProcesses; i++)
+	{
+		pid_t pid = fork();
+		if (pid == 0)
+		{
+			int start = i * (numOfDomains / numOfProcesses);
+			int end = start + (numOfDomains / numOfProcesses);
+			if (i == (numOfProcesses - 1))
+			{
+				end += (numOfDomains % numOfProcesses);	
+			}
+			char filename[100];
+			sprintf(filename, "domains/domains%d.txt", i);
+			fp = fopen(filename, "r");
+
+			// malloc space for the domains
+			char *domains[end - start];
+			for (j = 0; j < end - start; j++)
+			{
+				domains[j] = malloc(200);
+			}
+
+			// read in the domains
+			j = 0;
+			while (fgets(domains[j++], 199, fp) != NULL);
+
+			// close the file
+			fclose(fp);
+			
+			// loop through all domains
+			for (j = 0; j < end - start; j++)
+			{
+				char *p = strstr(domains[j], "\n");
+				*p = '\0';
+				nslookup(domains[j]);
+			}
+
+			// loop through all subdomains
+			for (j = 0; j < numOfSubs; j++)
+			{
+				for (k = 0; k < end - start; k++)
+				{
+					char subdomain[300];
+					sprintf(subdomain, "%s.%s", subs[j], domains[k]);
+
+					//printf("%s\n", subdomain);
+					if (gethostbyname(subdomain))
+					{
+						nslookup(subdomain);
+					}
+					
+				}
+			}
+
+			// free the subs
+			for (i = 0; i < numOfSubs; i++)
+			{
+				free(subs[i]);
+			}
+
+			// free the domains
+			for (i = 0; i < end - start; i++)
+			{
+				free(domains[i]);
+			}
+			
+			return 0;
+		}
+		else
+		{
+			pids[i] = pid;
+		}
+	}
+
+	// wait for the processes to finish
+	for (i = 0; i < numOfProcesses; i++)
+	{
+		waitpid(pids[i], NULL, 0);
+	}
+
+	// free the subs
+	for (i = 0; i < numOfSubs; i++)
 	{
 		free(subs[i]);
 	}
-	
-	pthread_mutex_destroy(&sub_mutex);
+
+	// delete the divided domains folder
+	system("rm -rf domains");
 
 	return 0;
 }
 
-void *workThread(void *data)
-{
-	while (1)
-	{
-		pthread_mutex_lock(&sub_mutex);
-
-		if (subnumber >= NUM_OF_SUBS - 1)
-		{
-			pthread_mutex_unlock(&sub_mutex);
-			break;
-		}
-
-		char *line = subs[subnumber++];
-		pthread_mutex_unlock(&sub_mutex);
-
-		char *p = strstr(line, "\n");
-		*p = '\0';
-
-		char subdomain[100];
-		sprintf(subdomain, "%s.%s", line, domain);
-
-		if (gethostbyname(subdomain))
-		{
-			nslookup(subdomain);
-		}
-	}
-
-	pthread_exit(NULL);
-}
-
 void nslookup(char *subdomain)
 {
-	char hostname[200];
-	char command[300];
+	char hostname[300];
+	char command[400];
 	sprintf(hostname, "_ldap._tcp.dc._msdcs.%s", subdomain);
 	sprintf(command, "nslookup -q=srv %s", hostname);
 
@@ -121,13 +167,13 @@ void nslookup(char *subdomain)
 	int i, j;
 	for (i = 0; i < 50; i++)
 	{
-		lines[i] = malloc(200);
+		lines[i] = malloc(300);
 	}
 
 	FILE *fp = popen(command, "r");
 
 	i = 0;
-	while (fgets(lines[i++], 199, fp) != NULL);
+	while (fgets(lines[i++], 299, fp) != NULL);
 
 	int dc = 0;
 	i = 3;
