@@ -204,14 +204,15 @@ void nslookup(char *subdomain)
 		if (!dc)
 		{
 			dc = 1;
-			printf("--%s--\n", subdomain);
+			//printf("--%s--\n", subdomain);
 		}
 
 		printf("%s\n", p1);
 	}
 	if (dc)
 	{
-		printf("\n");
+		
+		//printf("\n");
 	}
 
 	for (i = 0; i < 50; i++)
