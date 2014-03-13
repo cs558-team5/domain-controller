@@ -171,7 +171,7 @@ void nslookup(char *subdomain)
 	}
 
 	timeToWait = 1;//Seconds
-	sleep(timeToWait);
+	sleep(timeToWait); //wait between calls to limit traffic
 
 	FILE *fp = popen(command, "r");
 
