@@ -207,11 +207,12 @@ void nslookup(char *subdomain)
 			printf("--%s--\n", subdomain);
 		}
 
-		printf("%s\n", p1);
+		if (strlen(p1)>0)
+			printf("%s\n", p1);
 	}
 	if (dc)
 	{
-		printf("\n");
+		//printf("\n");
 	}
 
 	for (i = 0; i < 50; i++)
