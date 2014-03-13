@@ -1,0 +1,2 @@
+#!/bin/bash
+./findDCs $1 $2 $3 > DCDomains.txt
