@@ -170,6 +170,9 @@ void nslookup(char *subdomain)
 		lines[i] = malloc(300);
 	}
 
+	timeToWait = 1;//Seconds
+	sleep(timeToWait);
+
 	FILE *fp = popen(command, "r");
 
 	i = 0;
