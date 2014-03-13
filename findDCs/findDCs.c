@@ -206,8 +206,9 @@ void nslookup(char *subdomain)
 			dc = 1;
 			//printf("--%s--\n", subdomain);
 		}
-
-		printf("%s\n", p1);
+		
+		if (strlen(p1)<1)//Only print info if something found
+			printf("%s\n", p1);
 	}
 	if (dc)
 	{
